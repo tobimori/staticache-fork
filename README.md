@@ -345,7 +345,7 @@ You will need to configure your web server to prefer the pre-compressed files:
 
 **Apache:**
 
-Replace the Staticache rewrite rules in your `.htaccess` (see above) with gzip-aware variants[^1](https://httpd.apache.org/docs/2.4/mod/mod_deflate.html#precompressed):
+Replace the Staticache rewrite rules in your `.htaccess` (see above) with gzip-aware variants[^1]:
 
 ```
 # Serve pre-compressed static cache files
@@ -373,7 +373,7 @@ RewriteRule \.html\.gz$ - [T=text/html,E=no-gzip:1]
 
 **Caddy:**
 
-Add `precompressed` to your `file_server` directive[^2](https://caddyserver.com/docs/caddyfile/directives/file_server). Without arguments, it checks for brotli, zstd, and gzip sidecar files (in that order):
+Add `precompressed` to your `file_server` directive[^2]. Without arguments, it checks for brotli, zstd, and gzip sidecar files (in that order):
 
 ```
 example.com
@@ -399,7 +399,7 @@ location / {
 }
 ```
 
-nginx's `gzip_static` module will automatically prefer `.gz` files when available and the client supports gzip[^3](https://nginx.org/en/docs/http/ngx_http_gzip_static_module.html).
+nginx's `gzip_static` module will automatically prefer `.gz` files when available and the client supports gzip[^3].
 
 ## What's Kirby?
 - **[getkirby.com](https://getkirby.com)** – Get to know the CMS.
@@ -417,3 +417,7 @@ nginx's `gzip_static` module will automatically prefer `.gz` files when availabl
 ## License
 
 [MIT](./LICENSE) License © 2022 [Bastian Allgeier](https://getkirby.com)
+
+[^1]: https://httpd.apache.org/docs/2.4/mod/mod_deflate.html#precompressed
+[^2]: https://caddyserver.com/docs/caddyfile/directives/file_server
+[^3]: https://nginx.org/en/docs/http/ngx_http_gzip_static_module.html
