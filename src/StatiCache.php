@@ -59,7 +59,33 @@ class StatiCache extends FileCache
 			$result  = $headers . "\n\n" . $result;
 		}
 
-		return F::write($this->file($cacheId), $result);
+		$file    = $this->file($cacheId);
+		$success = F::write($file, $result);
+
+		if ($success === true) {
+			$this->writeCompressed($file, $result);
+		}
+
+		return $success;
+	}
+
+	/**
+	 * Removes an item from the cache and
+	 * returns whether the operation was successful
+	 *
+	 * Overrides the parent to also remove compressed
+	 * copies that the parent doesn't know about.
+	 */
+	public function remove(string $key): bool
+	{
+		$file = $this->file(static::parseCacheId($key));
+
+		foreach ($this->compressionConfig() as $encoding => $level) {
+			$ext = static::compressionExtension($encoding);
+			F::remove($file . '.' . $ext);
+		}
+
+		return parent::remove($key);
 	}
 
 	/**
@@ -161,5 +187,78 @@ class StatiCache extends FileCache
 		$id       = implode('.', $parts);
 
 		return compact('id', 'language', 'contentType', 'version');
+	}
+
+	/**
+	 * Writes compressed copies of a cached file for each
+	 * configured compression encoding
+	 */
+	protected function writeCompressed(string $file, string $content): void
+	{
+		foreach ($this->compressionConfig() as $encoding => $level) {
+			$compressed = match ($encoding) {
+				'gzip' => gzencode($content, $level),
+				default => false
+			};
+
+			if ($compressed !== false) {
+				$ext = static::compressionExtension($encoding);
+				F::write($file . '.' . $ext, $compressed);
+			}
+		}
+	}
+
+	/**
+	 * Parses the `compression` option into a normalized
+	 * `['encoding' => level]` array
+	 *
+	 * Supports both `['gzip']` (default level) and
+	 * `['gzip' => 9]` (explicit level) syntax.
+	 *
+	 * @return array<string, int>
+	 */
+	protected function compressionConfig(): array
+	{
+		$config = $this->options['compression'] ?? [];
+
+		if (is_array($config) === false) {
+			return [];
+		}
+
+		$result = [];
+
+		foreach ($config as $key => $value) {
+			if (is_int($key) === true) {
+				// ['gzip'] syntax — use default level
+				$result[$value] = static::compressionDefaultLevel($value);
+			} else {
+				// ['gzip' => 9] syntax
+				$result[$key] = $value;
+			}
+		}
+
+		return $result;
+	}
+
+	/**
+	 * Returns the file extension for a compression encoding
+	 */
+	protected static function compressionExtension(string $encoding): string
+	{
+		return match ($encoding) {
+			'gzip' => 'gz',
+			default => $encoding
+		};
+	}
+
+	/**
+	 * Returns the default compression level for an encoding
+	 */
+	protected static function compressionDefaultLevel(string $encoding): int
+	{
+		return match ($encoding) {
+			'gzip' => 6,
+			default => -1
+		};
 	}
 }

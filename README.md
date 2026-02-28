@@ -314,6 +314,90 @@ Replace the last six lines of the loader function with this code:
   die($body);
 ```
 
+### Compression
+
+Staticache can write pre-compressed copies of cached files alongside the originals. This lets your web server serve them directly without runtime compression overhead (e.g. `mod_deflate`).
+
+Enable compression with the `compression` option:
+
+```php
+// /site/config/config.php
+
+return [
+  ‘cache’ => [
+    ‘pages’ => [
+      ‘active’      => true,
+      ‘type’        => ‘static’,
+
+      // gzip with default compression level (6)
+      ‘compression’ => [‘gzip’],
+
+      // OR with explicit compression level (0-9)
+      ‘compression’ => [‘gzip’ => 9]
+    ]
+  ]
+];
+```
+
+For each cached file (e.g. `index.html`), a compressed copy (e.g. `index.html.gz`) will be written next to it. The compressed files are automatically cleaned up when the cache is purged.
+
+You will need to configure your web server to prefer the pre-compressed files:
+
+**Apache:**
+
+Add the following to your `.htaccess` file. This tells Apache to serve the `.gz` file when the client supports gzip and a pre-compressed file exists:
+
+```
+# Serve pre-compressed gzip files if they exist
+<IfModule mod_headers.c>
+  RewriteCond %{HTTP:Accept-Encoding} gzip
+  RewriteCond %{REQUEST_URI} \.html$
+  RewriteCond %{REQUEST_FILENAME}.gz -f
+  RewriteRule ^(.+)$ $1.gz [L]
+
+  # Serve correct content type and encoding
+  <FilesMatch "\.html\.gz$">
+    Header set Content-Encoding gzip
+    Header set Content-Type "text/html; charset=UTF-8"
+    # Prevent double compression
+    SetEnv no-gzip 1
+  </FilesMatch>
+</IfModule>
+```
+
+When using Staticache’s rewrite rules, you need to add gzip-aware variants before them:
+
+```
+# Serve pre-compressed static cache files
+RewriteCond %{HTTP:Accept-Encoding} gzip
+RewriteCond %{DOCUMENT_ROOT}/site/cache/%{SERVER_NAME}/pages/%{REQUEST_URI}/index.html.gz -f
+RewriteRule ^(.*) %{DOCUMENT_ROOT}/site/cache/%{SERVER_NAME}/pages/%{REQUEST_URI}/index.html.gz [END,E=CONTENT_TYPE:text/html,E=CONTENT_ENCODING:gzip]
+
+# Fall back to uncompressed static cache
+RewriteCond %{DOCUMENT_ROOT}/site/cache/%{SERVER_NAME}/pages/%{REQUEST_URI}/index.html -f
+RewriteRule ^(.*) %{DOCUMENT_ROOT}/site/cache/%{SERVER_NAME}/pages/%{REQUEST_URI}/index.html [END]
+
+RewriteCond %{DOCUMENT_ROOT}/site/cache/%{SERVER_NAME}/pages/%{REQUEST_URI} -f
+RewriteRule ^(.*) %{DOCUMENT_ROOT}/site/cache/%{SERVER_NAME}/pages/%{REQUEST_URI} [END]
+
+<IfModule mod_headers.c>
+  Header set Content-Encoding gzip env=CONTENT_ENCODING
+  Header set Content-Type "text/html; charset=UTF-8" env=CONTENT_TYPE
+  SetEnvIf Request_URI "\.gz$" no-gzip 1
+</IfModule>
+```
+
+**nginx:**
+
+```
+location / {
+  gzip_static on;
+  try_files $uri $uri/ /site/cache/$server_addr/pages/$uri/index.html /site/cache/$server_addr/pages/$uri /index.php?$query_string;
+}
+```
+
+nginx’s `gzip_static` module will automatically prefer `.gz` files when available and the client supports gzip.
+
 ## What’s Kirby?
 - **[getkirby.com](https://getkirby.com)** – Get to know the CMS.
 - **[Try it](https://getkirby.com/try)** – Take a test ride with our online demo. Or download one of our kits to get started.
