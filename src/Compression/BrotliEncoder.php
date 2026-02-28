@@ -27,7 +27,7 @@ class BrotliEncoder implements CompressionEncoder
 
 	public function defaultLevel(): int
 	{
-		return 4;
+		return BROTLI_COMPRESS_LEVEL_DEFAULT;
 	}
 
 	public function encode(string $content, int $level): string|false
