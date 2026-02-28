@@ -7,6 +7,10 @@ use Kirby\Cms\App;
 use Kirby\Cms\Url;
 use Kirby\Filesystem\F;
 use Kirby\Filesystem\Mime;
+use Kirby\Cache\Compression\BrotliEncoder;
+use Kirby\Cache\Compression\CompressionEncoder;
+use Kirby\Cache\Compression\GzipEncoder;
+use Kirby\Cache\Compression\ZstdEncoder;
 use Kirby\Toolkit\Str;
 
 /**
@@ -80,9 +84,8 @@ class StatiCache extends FileCache
 	{
 		$file = $this->file(static::parseCacheId($key));
 
-		foreach ($this->compressionConfig() as $encoding => $level) {
-			$ext = static::compressionExtension($encoding);
-			F::remove($file . '.' . $ext);
+		foreach ($this->compressionConfig() as ['encoder' => $encoder]) {
+			F::remove($file . '.' . $encoder->extension());
 		}
 
 		return parent::remove($key);
@@ -195,27 +198,47 @@ class StatiCache extends FileCache
 	 */
 	protected function writeCompressed(string $file, string $content): void
 	{
-		foreach ($this->compressionConfig() as $encoding => $level) {
-			$compressed = match ($encoding) {
-				'gzip' => gzencode($content, $level),
-				default => false
-			};
+		foreach ($this->compressionConfig() as ['encoder' => $encoder, 'level' => $level]) {
+			$compressed = $encoder->encode($content, $level);
 
 			if ($compressed !== false) {
-				$ext = static::compressionExtension($encoding);
-				F::write($file . '.' . $ext, $compressed);
+				F::write($file . '.' . $encoder->extension(), $compressed);
 			}
 		}
 	}
 
 	/**
-	 * Parses the `compression` option into a normalized
-	 * `['encoding' => level]` array
+	 * Returns the available compression encoders keyed by encoding name
+	 *
+	 * Only returns encoders whose PHP extensions are loaded.
+	 *
+	 * @return array<string, CompressionEncoder>
+	 */
+	protected static function encoders(): array
+	{
+		$encoders = [
+			'gzip' => new GzipEncoder(),
+		];
+
+		if (extension_loaded('brotli') === true) {
+			$encoders['br'] = new BrotliEncoder();
+		}
+
+		if (extension_loaded('zstd') === true) {
+			$encoders['zstd'] = new ZstdEncoder();
+		}
+
+		return $encoders;
+	}
+
+	/**
+	 * Parses the `compression` option into a normalized array
+	 * of encoder/level pairs
 	 *
 	 * Supports both `['gzip']` (default level) and
 	 * `['gzip' => 9]` (explicit level) syntax.
 	 *
-	 * @return array<string, int>
+	 * @return array<int, array{encoder: CompressionEncoder, level: int}>
 	 */
 	protected function compressionConfig(): array
 	{
@@ -225,40 +248,25 @@ class StatiCache extends FileCache
 			return [];
 		}
 
-		$result = [];
+		$encoders = static::encoders();
+		$result   = [];
 
 		foreach ($config as $key => $value) {
 			if (is_int($key) === true) {
-				// ['gzip'] syntax — use default level
-				$result[$value] = static::compressionDefaultLevel($value);
+				$encoding = $value;
+				$encoder  = $encoders[$encoding] ?? null;
+				$level    = $encoder?->defaultLevel();
 			} else {
-				// ['gzip' => 9] syntax
-				$result[$key] = $value;
+				$encoding = $key;
+				$encoder  = $encoders[$encoding] ?? null;
+				$level    = $value;
+			}
+
+			if ($encoder !== null) {
+				$result[] = ['encoder' => $encoder, 'level' => $level];
 			}
 		}
 
 		return $result;
-	}
-
-	/**
-	 * Returns the file extension for a compression encoding
-	 */
-	protected static function compressionExtension(string $encoding): string
-	{
-		return match ($encoding) {
-			'gzip' => 'gz',
-			default => $encoding
-		};
-	}
-
-	/**
-	 * Returns the default compression level for an encoding
-	 */
-	protected static function compressionDefaultLevel(string $encoding): int
-	{
-		return match ($encoding) {
-			'gzip' => 6,
-			default => -1
-		};
 	}
 }
